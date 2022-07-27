@@ -1,67 +1,110 @@
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
-const PORT = process.env.PORT || 3001;
-const app = express();
-// creating a route that the front-end can request data from
 const { animals } = require('./data/animals');
 
+const PORT = process.env.PORT || 3001;
+const app = express();
+// Parse incoming string or array data
+app.use(express.urlencoded({ extended: true}));
+// parse incoming JSON data
+app.use(express.json());
+
 function filterByQuery(query, animalsArray) {
-    // personality traits array
-    let personalityTraitsArray = [];
-    // animal array as filtered results
-    let filteredResults = animalsArray;
-    if (query.personalityTraits) {
-        // save personality traits as dedicated array
-        // If personality traits is a string, place it into the new array and save.
-        if (typeof query.personalityTraits === 'string') {
-            personalityTraitsArray = [query.personalityTraits];
-        } else {
-            personalityTraitsArray = query.personalityTraits;
-        }
+  let personalityTraitsArray = [];
+  let filteredResults = animalsArray;
+  if (query.personalityTraits) {
+    if (typeof query.personalityTraits === 'string') {
+      personalityTraitsArray = [query.personalityTraits];
+    } else {
+      personalityTraitsArray = query.personalityTraits;
+    }
+    personalityTraitsArray.forEach(trait => {
+      filteredResults = filteredResults.filter(
+        animal => animal.personalityTraits.indexOf(trait) !== -1
+      );
+    });
+  }
+  if (query.diet) {
+    filteredResults = filteredResults.filter(animal => animal.diet === query.diet);
+  }
+  if (query.species) {
+    filteredResults = filteredResults.filter(animal => animal.species === query.species);
+  }
+  if (query.name) {
+    filteredResults = filteredResults.filter(animal => animal.name === query.name);
+  }
+  return filteredResults;
+}
 
+function findById(id, animalsArray) {
+  const result = animalsArray.filter(animal => animal.id === id)[0];
+  return result;
+};
 
-        // Loop through each trait in the personality traits array
-        personalityTraitsArray.forEach(trait => {
-            // Check the trait against each animal in the filtered results array.
-            // Remember, it is initially a copy of animalsArray
-            // but here we're updating it for each trait in the .forEach() loop.
-            // for each trait being targeted by the filter, the filteredResults
-            // array will then contain only the entries that contain the trait,
-            // so at the end we'll have an array of animals that have every one
-            // of the traits when the .forEach() loop is finished.
-            filteredResults = filteredResults.filter(
-                animal => animal.personalityTraits.indexOf(trait) !== -1
-            );
-        });
+function createNewAnimal(body, animalsArray) {
+    const animal = body
+    animalsArray.push(animal);
+    fs.writeFileSync(
+        path.join(__dirname, './data/animals.json'),
+        JSON.stringify({ animals: animalsArray }, null, 2)
+        );
+        console.log(animals.json);
+
+    // return the finished code tp post route for response
+    return animal;
+};
+
+// validation function to take new animal data from 
+// req.body and check if it exist and the right type.
+function validateAnimal(animal) {
+    if(!animal.name || typeof animal.name !== 'string') {
+        return false;
     }
 
-
-    if (query.diet) {
-        filteredResults = filteredResults.filter(animal => animal.diet === query.diet);
+    if(!animal.species || typeof animal.species !== 'string') {
+        return false;
     }
 
-    if (query.species) {
-        filteredResults = filteredResults.filter(animal => animal.species === query.species);
+    if(!animal.diet || typeof animal.diet !== 'string') {
+        return false;
     }
 
-    if (query.name) {
-        filteredResults = filteredResults.filter(animal => animal.name === query.name);
+    if(!animal.personalityTraits || !Array.isArray(animal.personalityTraits)) {
+        return false;
     }
-    // return the filtered results
-    return filteredResults;
+    return true;
 }
 
 app.get('/api/animals', (req, res) => {
-    let results = animals;
-    if (req.query) {
-        results = filterByQuery(req.query, results);
-    }
-    res.json(results);
-})
+  let results = animals;
+  if (req.query) {
+    results = filterByQuery(req.query, results);
+  }
+  res.json(results);
+});
 
-app.get('/api/animals', (req, res) => {
-    res.json(animals);
-})
+app.get('/api/animals/:id', (req, res) => {
+  const result = findById(req.params.id, animals);
+  if (result) {
+    res.json(result);
+  } else {
+    res.send(404);
+  }
+});
+
+app.post('/api/animals', (req, res) => {
+    // set id based on what the next index of the array will be.
+    req.body.id = animals.length.toString();
+
+    // if any data in req.body is incorrect, send 400 error back
+    if(!validateAnimal) {
+        res.status(400).send('The animal is not properly formatted.');
+    } else {
+    const animal = createNewAnimal(req.body, animals);
+    res.json(animal);}
+});
 
 app.listen(PORT, () => {
-    console.log(`API server now on port ${PORT}!`);
+  console.log(`API server now on port ${PORT}!`);
 });
